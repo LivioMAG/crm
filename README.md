@@ -26,7 +26,7 @@ http://127.0.0.1:4174/index.html
 
 ## Supabase einrichten
 
-1. Neues Supabase-Projekt erstellen und im SQL Editor den Inhalt von `supabase/schema.sql` ausführen.
+1. Neues Supabase-Projekt erstellen und im SQL Editor den Inhalt von `supabase/schema.sql` ausführen. Wenn die Datenbank ohne Row Level Security betrieben werden soll, stattdessen `supabase/schema-ohne-rls.sql` verwenden; diese Variante löscht keine Tabellen und deaktiviert RLS für die CRM-Tabellen.
 2. In `config/supabase-config.json` `url` und `anonKey` mit der Projekt-URL und dem öffentlichen Anon-Key ersetzen.
 3. In Supabase Auth E-Mail/Passwort aktivieren. Bei Bedarf E-Mail-Bestätigung ein- oder ausschalten.
 

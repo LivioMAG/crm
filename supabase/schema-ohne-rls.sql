@@ -1,3 +1,7 @@
+-- Supabase-Schema ohne Row Level Security (RLS).
+-- Für Setups, in denen die App ohne Supabase-RLS-Policies betrieben wird.
+-- Dieses Skript ist nicht destruktiv: Es löscht keine Tabellen.
+
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   email text not null,
@@ -80,34 +84,12 @@ create table if not exists public.sales (
   "updatedAt" text
 );
 
-alter table public.profiles enable row level security;
-alter table public.companies enable row level security;
-alter table public.contacts enable row level security;
-alter table public."followUps" enable row level security;
-alter table public.products enable row level security;
-alter table public.sales enable row level security;
-
-drop policy if exists "Users can read own profile" on public.profiles;
-create policy "Users can read own profile" on public.profiles for select to authenticated using (auth.uid() = id);
-drop policy if exists "Users can insert own profile" on public.profiles;
-create policy "Users can insert own profile" on public.profiles for insert to authenticated with check (auth.uid() = id);
-drop policy if exists "Users can update own profile" on public.profiles;
-create policy "Users can update own profile" on public.profiles for update to authenticated using (auth.uid() = id) with check (auth.uid() = id);
-
-do $$
-declare table_name text;
-begin
-  foreach table_name in array array['companies', 'contacts', 'followUps', 'products', 'sales'] loop
-    execute format('drop policy if exists "Users can read own %1$s" on public.%2$I', table_name, table_name);
-    execute format('create policy "Users can read own %1$s" on public.%2$I for select to authenticated using (auth.uid() = user_id)', table_name, table_name);
-    execute format('drop policy if exists "Users can insert own %1$s" on public.%2$I', table_name, table_name);
-    execute format('create policy "Users can insert own %1$s" on public.%2$I for insert to authenticated with check (auth.uid() = user_id)', table_name, table_name);
-    execute format('drop policy if exists "Users can update own %1$s" on public.%2$I', table_name, table_name);
-    execute format('create policy "Users can update own %1$s" on public.%2$I for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id)', table_name, table_name);
-    execute format('drop policy if exists "Users can delete own %1$s" on public.%2$I', table_name, table_name);
-    execute format('create policy "Users can delete own %1$s" on public.%2$I for delete to authenticated using (auth.uid() = user_id)', table_name, table_name);
-  end loop;
-end $$;
+alter table public.profiles disable row level security;
+alter table public.companies disable row level security;
+alter table public.contacts disable row level security;
+alter table public."followUps" disable row level security;
+alter table public.products disable row level security;
+alter table public.sales disable row level security;
 
 create or replace function public.handle_new_user_profile()
 returns trigger
