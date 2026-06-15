@@ -4,6 +4,9 @@ Eine sehr einfache, responsive CRM-Web-App auf Basis von HTML, CSS und Vanilla J
 
 ## Funktionen
 
+- CRM-Übersicht nach Login mit auswählbaren Arbeitsbereichen
+- Neue CRM-Arbeitsbereiche per Plus-Button erstellen
+- Menschen per E-Mail in den CRM-Einstellungen einladen und gemeinsam berechtigt bearbeiten
 - Übersicht mit Kennzahlen, offenen Follow-ups, heute fälligen Aufgaben und zuletzt aktualisierten Firmen
 - Firmen anlegen, bearbeiten, löschen und im Detail öffnen
 - Kontakte anlegen, bearbeiten, löschen und Firmen zuordnen
@@ -30,4 +33,4 @@ http://127.0.0.1:4174/index.html
 2. In `config/supabase-config.json` `url` und `anonKey` mit der Projekt-URL und dem öffentlichen Anon-Key ersetzen.
 3. In Supabase Auth E-Mail/Passwort aktivieren. Bei Bedarf E-Mail-Bestätigung ein- oder ausschalten.
 
-Die App bietet Login und Registrierung mit E-Mail, Passwort, Vorname und Nachname. CRM-Daten werden benutzerbezogen in eigenen Supabase-Tabellen (`companies`, `contacts`, `followUps`, `products`, `sales`) gespeichert; Profile liegen in `public.profiles`.
+Die App bietet Login und Registrierung mit E-Mail, Passwort, Vorname und Nachname. CRM-Daten werden pro CRM-Arbeitsbereich in eigenen Supabase-Tabellen (`companies`, `contacts`, `followUps`, `products`, `sales`) gespeichert. Zugriffe werden über `crms` und `crm_members` per eingeladener E-Mail-Adresse gesteuert; Profile liegen in `public.profiles`.
