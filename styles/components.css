@@ -89,3 +89,14 @@ input[readonly] { background:var(--surface-soft); color:var(--success); font-wei
 @media (max-width: 720px) { .detail-list { grid-template-columns:1fr; } }
 .followup-type-icon { display:inline-grid; place-items:center; width:34px; height:34px; border-radius:12px; background:var(--accent-soft); color:var(--accent); }
 .followup-type-icon .icon { width:18px; height:18px; }
+.notice { margin-bottom:16px; padding:12px 14px; border:1px solid #bfdbfe; background:#eff6ff; color:#1d4ed8; border-radius:14px; font-weight:750; }
+.auth-shell { min-height:100vh; display:grid; place-items:center; padding:24px; }
+.auth-card { width:min(520px, 100%); }
+.auth-card h1 { margin:0 0 8px; font-size:42px; letter-spacing:-.055em; }
+.auth-card p { color:var(--muted); margin:0 0 20px; }
+.auth-brand { margin-bottom:24px; }
+.auth-actions { margin-top:18px; }
+.user-box { margin-top:28px; padding:14px; border:1px solid var(--line); border-radius:16px; background:var(--surface); display:grid; gap:8px; }
+.user-box span { color:var(--muted); font-size:13px; overflow-wrap:anywhere; }
+button:disabled { opacity:.55; cursor:not-allowed; transform:none; }
+@media (max-width: 920px) { .user-box strong, .user-box span { display:none; } .user-box { padding:8px; } .user-box .btn { padding:8px; min-height:36px; font-size:12px; } }
