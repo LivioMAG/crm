@@ -192,8 +192,23 @@ async function openCrmForm() {
     await loadCrms(); currentCrmId = crm.id; currentCrm = crms.find(c=>c.id===crm.id) || crm; localStorage.setItem('currentCrmId', currentCrmId); data = emptyData(); view = 'dashboard'; authMessage = ''; render();
   };
 }
-function openCrmSettings() {
-  modal(`Einstellungen: ${escapeHtml(currentCrmName())}`, `<form id="invite-form"><p class="kv">Lade Menschen per E-Mail ein. Sobald sie sich mit dieser E-Mail anmelden, sehen sie dieses CRM und dürfen Daten anschauen sowie bearbeiten.</p><div class="form-grid"><label class="field full">E-Mail-Adresse*<input name="email" type="email" required placeholder="person@example.com"></label></div><div class="actions" style="margin-top:16px"><button class="btn primary">Einladen</button></div></form>`);
+async function openCrmSettings() {
+  let members = [];
+  try {
+    const { data: rows, error } = await supabase
+      .from('crm_members')
+      .select('id, invited_email, role, createdAt')
+      .eq('crm_id', currentCrmId)
+      .order('createdAt', { ascending: true });
+    if (error) throw error;
+    members = rows || [];
+  } catch (error) {
+    authMessage = `Teilnehmer konnten nicht geladen werden: ${error.message}`;
+    render();
+    return;
+  }
+
+  modal(`Einstellungen: ${escapeHtml(currentCrmName())}`, `${settingsMembersSection(members)}<form id="invite-form" class="settings-invite-form"><h3>Teilnehmer einladen</h3><p class="kv">Lade Menschen per E-Mail ein. Sobald sie sich mit dieser E-Mail anmelden, sehen sie dieses CRM und dürfen Daten anschauen sowie bearbeiten.</p><div class="form-grid"><label class="field full">E-Mail-Adresse*<input name="email" type="email" required placeholder="person@example.com"></label></div><div class="actions" style="margin-top:16px"><button class="btn primary">Einladen</button></div></form>`);
   $('#invite-form').onsubmit = async e => {
     e.preventDefault();
     const fd = Object.fromEntries(new FormData(e.target));
@@ -203,6 +218,32 @@ function openCrmSettings() {
     $('.modal-backdrop').remove();
     await loadCrms(); render();
   };
+  document.querySelectorAll('[data-remove-member]').forEach(button => {
+    button.onclick = () => removeCrmMember(button.dataset.removeMember, button.dataset.memberEmail);
+  });
+}
+
+function settingsMembersSection(members) {
+  const currentEmail = session?.user?.email?.toLowerCase() || '';
+  const rows = members.map(member => {
+    const isOwner = member.role === 'owner';
+    const isCurrentUser = member.invited_email?.toLowerCase() === currentEmail;
+    const canRemove = !isOwner && !isCurrentUser;
+    const role = isOwner ? 'Besitzer' : 'Teilnehmer';
+    const note = isCurrentUser ? 'Du' : fmtDate(member.createdAt);
+    return `<li class="member-row"><div><strong>${escapeHtml(member.invited_email)}</strong><span>${escapeHtml(note)}</span></div><div class="member-actions">${statusBadge(role)}<button class="btn danger" data-remove-member="${escapeHtml(member.id)}" data-member-email="${escapeHtml(member.invited_email)}" ${canRemove ? '' : 'disabled'}>${icon('trash')}Entfernen</button></div></li>`;
+  }).join('');
+  return `<section class="settings-members"><h3>Eingeladene Teilnehmer</h3><p class="kv">Alle Personen, die Zugriff auf dieses CRM haben oder eingeladen wurden.</p><ul>${rows || '<li class="member-row empty-member">Noch keine Teilnehmer vorhanden.</li>'}</ul></section>`;
+}
+
+async function removeCrmMember(memberId, email) {
+  confirmDelete(`${email} aus diesem CRM entfernen?`, async () => {
+    const { error } = await supabase.from('crm_members').delete().eq('id', memberId).eq('crm_id', currentCrmId);
+    authMessage = error ? `Teilnehmer konnte nicht entfernt werden: ${error.message}` : `${email} wurde aus ${currentCrmName()} entfernt.`;
+    $('.modal-backdrop')?.remove();
+    await loadCrms();
+    render();
+  });
 }
 
 function modal(title, body) { document.body.insertAdjacentHTML('beforeend', `<div class="modal-backdrop"><div class="modal"><div class="modal-head"><h2>${title}</h2><button class="btn" data-close>Schließen</button></div>${body}</div></div>`); $('[data-close]').onclick=()=>$('.modal-backdrop').remove(); }

@@ -108,3 +108,14 @@ button:disabled { opacity:.55; cursor:not-allowed; transform:none; }
 .crm-card > .icon { color: var(--accent); width: 30px; height: 30px; }
 .crm-card strong { font-size: 28px; letter-spacing: -.04em; }
 @media (max-width: 920px) { .crm-switcher span, .crm-switcher strong { display: none; } .crm-switcher { padding: 8px; } }
+.settings-members { display:grid; gap:12px; margin-bottom:22px; }
+.settings-members h3, .settings-invite-form h3 { margin:0; font-size:20px; letter-spacing:-.03em; }
+.settings-members ul { list-style:none; padding:0; margin:0; display:grid; gap:10px; }
+.member-row { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:13px; border:1px solid var(--line); border-radius:16px; background:var(--surface-soft); }
+.member-row > div:first-child { display:grid; gap:4px; min-width:0; }
+.member-row strong { overflow-wrap:anywhere; }
+.member-row span { color:var(--muted); font-size:13px; }
+.member-actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
+.empty-member { color:var(--muted); justify-content:center; }
+.settings-invite-form { padding-top:18px; border-top:1px solid var(--line); }
+@media (max-width: 720px) { .member-row { display:grid; } .member-actions { justify-content:flex-start; } }
