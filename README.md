@@ -27,7 +27,7 @@ http://127.0.0.1:4174/index.html
 ## Supabase einrichten
 
 1. Neues Supabase-Projekt erstellen und im SQL Editor den Inhalt von `supabase/schema.sql` ausführen.
-2. In `index.html` `window.SUPABASE_CONFIG.url` und `window.SUPABASE_CONFIG.anonKey` mit der Projekt-URL und dem öffentlichen Anon-Key ersetzen.
+2. In `config/supabase-config.json` `url` und `anonKey` mit der Projekt-URL und dem öffentlichen Anon-Key ersetzen.
 3. In Supabase Auth E-Mail/Passwort aktivieren. Bei Bedarf E-Mail-Bestätigung ein- oder ausschalten.
 
 Die App bietet Login und Registrierung mit E-Mail, Passwort, Vorname und Nachname. CRM-Daten werden benutzerbezogen in eigenen Supabase-Tabellen (`companies`, `contacts`, `followUps`, `products`, `sales`) gespeichert; Profile liegen in `public.profiles`.

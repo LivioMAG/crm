@@ -10,12 +10,12 @@ const fmtDate = (value) => value ? new Intl.DateTimeFormat('de-DE').format(new D
 const escapeHtml = (value = '') => String(value).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const emptyData = () => ({ companies: [], contacts: [], followUps: [], products: [], sales: [] });
 const crmTables = { companies: 'companies', contacts: 'contacts', followUps: 'followUps', products: 'products', sales: 'sales' };
-const supabaseConfig = window.SUPABASE_CONFIG || { url: 'https://YOUR-PROJECT.supabase.co', anonKey: 'YOUR-SUPABASE-ANON-KEY' };
-const hasSupabaseConfig = supabaseConfig.url && supabaseConfig.anonKey && !supabaseConfig.url.includes('YOUR-PROJECT') && !supabaseConfig.anonKey.includes('YOUR-SUPABASE');
-const supabase = hasSupabaseConfig ? createClient(supabaseConfig.url, supabaseConfig.anonKey) : null;
+const supabaseConfigPath = 'config/supabase-config.json';
+let supabaseConfig = { url: '', anonKey: '' };
+let supabase = null;
 let session = null;
 let authMode = 'login';
-let authMessage = hasSupabaseConfig ? '' : 'Bitte trage zuerst deine Supabase URL und den Anon Key in index.html ein.';
+let authMessage = '';
 let isLoading = true;
 let data = emptyData();
 let view = 'dashboard';
@@ -24,6 +24,18 @@ let selectedContactId = null;
 let tableState = { companies: { q:'', sort:'name', dir:'asc' }, contacts: { q:'', status:'', priority:'', sort:'name', dir:'asc' }, followups: { q:'', status:'', priority:'', due:'', sort:'dueDate', dir:'asc' }, products: { q:'', status:'', category:'', sort:'name', dir:'asc' }, sales: { q:'', status:'', productId:'', contactId:'', companyId:'', from:'', to:'', sort:'saleDate', dir:'desc' }, timeline: { q:'', type:'', status:'', priority:'', sort:'date', dir:'desc' } };
 const icons = { dashboard:'M3 13h8V3H3v10Zm10 8h8V3h-8v18ZM3 21h8v-6H3v6Z', companies:'M3 21h18M5 21V7l8-4v18M19 21V11l-6-3M9 9h1M9 13h1M9 17h1M15 13h1M15 17h1', contacts:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75', followups:'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2ZM8 14h.01M12 14h.01M16 14h.01', plus:'M12 5v14M5 12h14', search:'m21 21-4.3-4.3M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z', edit:'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z', trash:'M3 6h18M8 6V4h8v2M6 6l1 15h10l1-15', call:'M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13 1 .36 1.98.7 2.91a2 2 0 0 1-.45 2.11L8.09 10a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.93.34 1.9.57 2.91.7A2 2 0 0 1 22 16.92Z', mail:'M4 4h16v16H4zM22 6l-10 7L2 6', meeting:'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM23 21v-2a4 4 0 0 0-3-3.87', note:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8ZM14 2v6h6M8 13h8M8 17h6', task:'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11', products:'M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16ZM3.3 7 12 12l8.7-5M12 22V12', sales:'M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7H14a3.5 3.5 0 0 1 0 7H6', arrow:'M5 12h14M13 5l7 7-7 7', empty:'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3' };
 function icon(name) { return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${icons[name] || icons.empty}"/></svg>`; }
+async function loadSupabaseConfig() {
+  const response = await fetch(supabaseConfigPath, { cache: 'no-store' });
+  if (!response.ok) throw new Error(`Supabase-Konfiguration konnte nicht geladen werden (${response.status}).`);
+  supabaseConfig = await response.json();
+  const hasConfig = supabaseConfig.url && supabaseConfig.anonKey && !supabaseConfig.url.includes('YOUR-PROJECT') && !supabaseConfig.anonKey.includes('YOUR-SUPABASE');
+  if (!hasConfig) {
+    authMessage = `Bitte trage zuerst deine Supabase URL und den Anon Key in ${supabaseConfigPath} ein.`;
+    return;
+  }
+  supabase = createClient(supabaseConfig.url, supabaseConfig.anonKey);
+}
+
 async function loadData() {
   if (!supabase || !session) { data = emptyData(); normalizeData(); return; }
   const entries = await Promise.all(Object.entries(crmTables).map(async ([collection, table]) => {
@@ -158,5 +170,5 @@ function openFollowForm(obj) { if(!data.companies.length) return alert('Bitte zu
 function confirmDelete(message, cb) { if (confirm(`${message}\nDiese Aktion kann nicht rückgängig gemacht werden.`)) cb(); }
 function renderAuth() { app.innerHTML = `<div class="auth-shell"><form class="card auth-card" id="auth-form"><div class="brand auth-brand"><span class="brand-mark">${icon('dashboard')}</span><span>Einfaches CRM</span></div><h1>${authMode === 'login' ? 'Login' : 'Registrieren'}</h1><p>Melde dich mit E-Mail und Passwort an. Neue Accounts benötigen Vor- und Nachname.</p>${authMessage ? `<div class="notice">${escapeHtml(authMessage)}</div>` : ''}<div class="form-grid">${authMode === 'register' ? '<label class="field">Vorname*<input name="firstName" required></label><label class="field">Nachname*<input name="lastName" required></label>' : ''}<label class="field full">E-Mail*<input name="email" type="email" required></label><label class="field full">Passwort*<input name="password" type="password" required minlength="6"></label></div><div class="actions auth-actions"><button class="btn primary" ${!supabase ? 'disabled' : ''}>${authMode === 'login' ? 'Einloggen' : 'Account erstellen'}</button><button class="btn" type="button" data-auth-toggle>${authMode === 'login' ? 'Registrieren' : 'Zum Login'}</button></div></form></div>`; $('#auth-form').onsubmit = handleAuthSubmit; $('[data-auth-toggle]').onclick = () => { authMode = authMode === 'login' ? 'register' : 'login'; authMessage = ''; render(); }; }
 async function handleAuthSubmit(event) { event.preventDefault(); if (!supabase) return; const form = event.target; const fd = Object.fromEntries(new FormData(form)); authMessage = 'Bitte warten ...'; render(); const options = { data: { first_name: fd.firstName || '', last_name: fd.lastName || '' } }; const result = authMode === 'login' ? await supabase.auth.signInWithPassword({ email: fd.email, password: fd.password }) : await supabase.auth.signUp({ email: fd.email, password: fd.password, options }); if (result.error) { authMessage = result.error.message; render(); return; } if (authMode === 'register' && result.data.user) { await supabase.from('profiles').upsert({ id: result.data.user.id, email: fd.email, first_name: fd.firstName, last_name: fd.lastName, updated_at: isoNow() }); authMessage = 'Account erstellt. Falls E-Mail-Bestätigung aktiv ist, bestätige bitte deine E-Mail.'; } }
-async function init() { if (!supabase) { isLoading = false; render(); return; } const { data: authData } = await supabase.auth.getSession(); session = authData.session; if (session) { try { await loadData(); } catch (error) { authMessage = `Daten konnten nicht geladen werden: ${error.message}`; data = emptyData(); } } isLoading = false; render(); supabase.auth.onAuthStateChange(async (_event, newSession) => { session = newSession; if (session) { try { await loadData(); } catch (error) { authMessage = `Daten konnten nicht geladen werden: ${error.message}`; data = emptyData(); } } else data = emptyData(); isLoading = false; render(); }); }
+async function init() { try { await loadSupabaseConfig(); } catch (error) { authMessage = error.message; } if (!supabase) { isLoading = false; render(); return; } const { data: authData } = await supabase.auth.getSession(); session = authData.session; if (session) { try { await loadData(); } catch (error) { authMessage = `Daten konnten nicht geladen werden: ${error.message}`; data = emptyData(); } } isLoading = false; render(); supabase.auth.onAuthStateChange(async (_event, newSession) => { session = newSession; if (session) { try { await loadData(); } catch (error) { authMessage = `Daten konnten nicht geladen werden: ${error.message}`; data = emptyData(); } } else data = emptyData(); isLoading = false; render(); }); }
 init();
