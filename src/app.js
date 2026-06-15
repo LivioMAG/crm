@@ -168,7 +168,40 @@ function openProductForm(obj) { modal(obj?'Produkt bearbeiten':'Produkt hinzufü
 function openSaleForm(obj) { if(!data.contacts.length) return alert('Bitte zuerst einen Kontakt hinzufügen.'); if(!data.products.length) return alert('Bitte zuerst ein Produkt hinzufügen.'); modal(obj?'Sale bearbeiten':'Sale hinzufügen', `<form id="form">${fields(obj,'sale')}<div class="actions" style="margin-top:16px"><button class="btn primary">Speichern</button></div></form>`); const form=$('#form'); const updateTotal=()=>{ form.totalPriceDisplay.value=money(Number(form.quantity.value||1)*Number(form.unitPrice.value||0)); }; $('[data-product-select]', form).onchange=e=>{ const price=e.target.selectedOptions[0]?.dataset.price; if(price) form.unitPrice.value=price; updateTotal(); }; $('[data-sale-quantity]', form).oninput=updateTotal; $('[data-sale-unit-price]', form).oninput=updateTotal; form.onsubmit=async e=>{e.preventDefault();await handleForm(e.target,obj,'sales',x=>{ const quantity=Math.max(1, Number(x.quantity||1)); const unitPrice=Number(x.unitPrice||0); const totalPrice=quantity*unitPrice; delete x.totalPriceDisplay; return {...x, quantity, unitPrice, totalPrice, price:totalPrice, currency:'CHF', companyId:contactById(x.contactId)?.companyId||''}; });}; }
 function openFollowForm(obj) { if(!data.companies.length) return alert('Bitte zuerst eine Firma hinzufügen.'); modal(obj?'Follow-up bearbeiten':'Follow-up hinzufügen', `<form id="form">${fields(obj,'follow')}<div class="actions" style="margin-top:16px"><button class="btn primary">Speichern</button></div></form>`); $('#form').onsubmit=async e=>{e.preventDefault();await handleForm(e.target,obj,'followUps',x=>({...x, title:x.type || 'Follow-up', completedAt:x.status==='Erledigt'?(obj?.completedAt||isoNow()):''}));}; }
 function confirmDelete(message, cb) { if (confirm(`${message}\nDiese Aktion kann nicht rückgängig gemacht werden.`)) cb(); }
-function renderAuth() { app.innerHTML = `<div class="auth-shell"><form class="card auth-card" id="auth-form"><div class="brand auth-brand"><span class="brand-mark">${icon('dashboard')}</span><span>Einfaches CRM</span></div><h1>${authMode === 'login' ? 'Login' : 'Registrieren'}</h1><p>Melde dich mit E-Mail und Passwort an. Neue Accounts benötigen Vor- und Nachname.</p>${authMessage ? `<div class="notice">${escapeHtml(authMessage)}</div>` : ''}<div class="form-grid">${authMode === 'register' ? '<label class="field">Vorname*<input name="firstName" required></label><label class="field">Nachname*<input name="lastName" required></label>' : ''}<label class="field full">E-Mail*<input name="email" type="email" required></label><label class="field full">Passwort*<input name="password" type="password" required minlength="6"></label></div><div class="actions auth-actions"><button class="btn primary" ${!supabase ? 'disabled' : ''}>${authMode === 'login' ? 'Einloggen' : 'Account erstellen'}</button><button class="btn" type="button" data-auth-toggle>${authMode === 'login' ? 'Registrieren' : 'Zum Login'}</button></div></form></div>`; $('#auth-form').onsubmit = handleAuthSubmit; $('[data-auth-toggle]').onclick = () => { authMode = authMode === 'login' ? 'register' : 'login'; authMessage = ''; render(); }; }
-async function handleAuthSubmit(event) { event.preventDefault(); if (!supabase) return; const form = event.target; const fd = Object.fromEntries(new FormData(form)); authMessage = 'Bitte warten ...'; render(); const options = { data: { first_name: fd.firstName || '', last_name: fd.lastName || '' } }; const result = authMode === 'login' ? await supabase.auth.signInWithPassword({ email: fd.email, password: fd.password }) : await supabase.auth.signUp({ email: fd.email, password: fd.password, options }); if (result.error) { authMessage = result.error.message; render(); return; } if (authMode === 'register' && result.data.user) { await supabase.from('profiles').upsert({ id: result.data.user.id, email: fd.email, first_name: fd.firstName, last_name: fd.lastName, updated_at: isoNow() }); authMessage = 'Account erstellt. Falls E-Mail-Bestätigung aktiv ist, bestätige bitte deine E-Mail.'; } }
+function renderAuth() { app.innerHTML = `<div class="auth-shell"><form class="card auth-card" id="auth-form"><div class="brand auth-brand"><span class="brand-mark">${icon('dashboard')}</span><span>Einfaches CRM</span></div><h1>${authMode === 'login' ? 'Login' : 'Registrieren'}</h1><p>Melde dich mit E-Mail und Passwort an. Neue Accounts benötigen Vor- und Nachname.</p>${authMessage ? `<div class="notice">${escapeHtml(authMessage)}</div>` : ''}<div class="form-grid">${authMode === 'register' ? '<label class="field">Vorname*<input name="firstName" required></label><label class="field">Nachname*<input name="lastName" required></label>' : ''}<label class="field full">E-Mail*<input name="email" type="email" required></label><label class="field full">Passwort*<input name="password" type="password" required minlength="6"></label></div><div class="actions auth-actions"><button class="btn primary">${authMode === 'login' ? 'Einloggen' : 'Account erstellen'}</button><button class="btn" type="button" data-auth-toggle>${authMode === 'login' ? 'Registrieren' : 'Zum Login'}</button></div></form></div>`; $('#auth-form').onsubmit = handleAuthSubmit; $('[data-auth-toggle]').onclick = () => { authMode = authMode === 'login' ? 'register' : 'login'; authMessage = ''; render(); }; }
+async function handleAuthSubmit(event) {
+  event.preventDefault();
+  if (!supabase) {
+    authMessage = `Registrierung/Login ist noch nicht verfügbar. Bitte prüfe die Supabase-Konfiguration in ${supabaseConfigPath}.`;
+    render();
+    return;
+  }
+  const form = event.target;
+  const fd = Object.fromEntries(new FormData(form));
+  authMessage = 'Bitte warten ...';
+  render();
+  const options = { data: { first_name: fd.firstName || '', last_name: fd.lastName || '' } };
+  let result;
+  try {
+    result = authMode === 'login'
+      ? await supabase.auth.signInWithPassword({ email: fd.email, password: fd.password })
+      : await supabase.auth.signUp({ email: fd.email, password: fd.password, options });
+  } catch (error) {
+    authMessage = `Verbindung zu Supabase fehlgeschlagen: ${error.message}`;
+    render();
+    return;
+  }
+  if (result.error) {
+    authMessage = result.error.message;
+    render();
+    return;
+  }
+  if (authMode === 'register') {
+    authMessage = result.data.session
+      ? 'Account erstellt. Du wirst angemeldet ...'
+      : 'Account erstellt. Bitte bestätige deine E-Mail und logge dich danach ein.';
+    render();
+  }
+}
 async function init() { try { await loadSupabaseConfig(); } catch (error) { authMessage = error.message; } if (!supabase) { isLoading = false; render(); return; } const { data: authData } = await supabase.auth.getSession(); session = authData.session; if (session) { try { await loadData(); } catch (error) { authMessage = `Daten konnten nicht geladen werden: ${error.message}`; data = emptyData(); } } isLoading = false; render(); supabase.auth.onAuthStateChange(async (_event, newSession) => { session = newSession; if (session) { try { await loadData(); } catch (error) { authMessage = `Daten konnten nicht geladen werden: ${error.message}`; data = emptyData(); } } else data = emptyData(); isLoading = false; render(); }); }
 init();
