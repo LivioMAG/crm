@@ -87,3 +87,5 @@ textarea { min-height:96px; resize:vertical; }
 .detail-list strong { overflow-wrap:anywhere; }
 input[readonly] { background:var(--surface-soft); color:var(--success); font-weight:900; }
 @media (max-width: 720px) { .detail-list { grid-template-columns:1fr; } }
+.followup-type-icon { display:inline-grid; place-items:center; width:34px; height:34px; border-radius:12px; background:var(--accent-soft); color:var(--accent); }
+.followup-type-icon .icon { width:18px; height:18px; }
