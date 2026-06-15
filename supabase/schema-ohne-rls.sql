@@ -11,9 +11,31 @@ create table if not exists public.profiles (
   updated_at timestamptz not null default now()
 );
 
+
+create table if not exists public.crms (
+  id text primary key,
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  name text not null,
+  description text,
+  "createdAt" text,
+  "updatedAt" text
+);
+
+create table if not exists public.crm_members (
+  id text primary key,
+  crm_id text not null references public.crms(id) on delete cascade,
+  user_id uuid references auth.users(id) on delete set null,
+  invited_email text not null,
+  role text not null default 'editor',
+  "createdAt" text
+);
+
+create unique index if not exists crm_members_crm_email_key on public.crm_members (crm_id, lower(invited_email));
+
 create table if not exists public.companies (
   id text primary key,
   user_id uuid not null references auth.users(id) on delete cascade,
+  crm_id text references public.crms(id) on delete cascade,
   name text not null,
   website text,
   industry text,
@@ -26,6 +48,7 @@ create table if not exists public.companies (
 create table if not exists public.contacts (
   id text primary key,
   user_id uuid not null references auth.users(id) on delete cascade,
+  crm_id text references public.crms(id) on delete cascade,
   "companyId" text references public.companies(id) on delete cascade,
   role text,
   "firstName" text not null,
@@ -40,6 +63,7 @@ create table if not exists public.contacts (
 create table if not exists public."followUps" (
   id text primary key,
   user_id uuid not null references auth.users(id) on delete cascade,
+  crm_id text references public.crms(id) on delete cascade,
   "companyId" text references public.companies(id) on delete cascade,
   "contactId" text references public.contacts(id) on delete set null,
   title text,
@@ -56,6 +80,7 @@ create table if not exists public."followUps" (
 create table if not exists public.products (
   id text primary key,
   user_id uuid not null references auth.users(id) on delete cascade,
+  crm_id text references public.crms(id) on delete cascade,
   name text not null,
   description text,
   price numeric not null default 0,
@@ -68,6 +93,7 @@ create table if not exists public.products (
 create table if not exists public.sales (
   id text primary key,
   user_id uuid not null references auth.users(id) on delete cascade,
+  crm_id text references public.crms(id) on delete cascade,
   "contactId" text references public.contacts(id) on delete cascade,
   "companyId" text references public.companies(id) on delete cascade,
   "productId" text references public.products(id) on delete set null,
@@ -84,7 +110,15 @@ create table if not exists public.sales (
   "updatedAt" text
 );
 
+alter table public.companies add column if not exists crm_id text references public.crms(id) on delete cascade;
+alter table public.contacts add column if not exists crm_id text references public.crms(id) on delete cascade;
+alter table public."followUps" add column if not exists crm_id text references public.crms(id) on delete cascade;
+alter table public.products add column if not exists crm_id text references public.crms(id) on delete cascade;
+alter table public.sales add column if not exists crm_id text references public.crms(id) on delete cascade;
+
 alter table public.profiles disable row level security;
+alter table public.crms disable row level security;
+alter table public.crm_members disable row level security;
 alter table public.companies disable row level security;
 alter table public.contacts disable row level security;
 alter table public."followUps" disable row level security;

@@ -18,6 +18,9 @@ let authMode = 'login';
 let authMessage = '';
 let isLoading = true;
 let data = emptyData();
+let crms = [];
+let currentCrmId = localStorage.getItem('currentCrmId') || '';
+let currentCrm = null;
 let view = 'dashboard';
 let selectedCompanyId = null;
 let selectedContactId = null;
@@ -36,26 +39,37 @@ async function loadSupabaseConfig() {
   supabase = createClient(supabaseConfig.url, supabaseConfig.anonKey);
 }
 
+async function loadCrms() {
+  if (!supabase || !session) { crms = []; currentCrm = null; currentCrmId = ''; return; }
+  const email = session.user.email?.toLowerCase() || '';
+  const { data: rows, error } = await supabase.from('crm_members').select('role, invited_email, crm:crms(*)').eq('invited_email', email);
+  if (error) throw error;
+  crms = (rows || []).filter(row => row.crm).map(row => ({ ...row.crm, role: row.role }));
+  if (!crms.some(c => c.id === currentCrmId)) currentCrmId = crms[0]?.id || '';
+  currentCrm = crms.find(c => c.id === currentCrmId) || null;
+  if (currentCrmId) localStorage.setItem('currentCrmId', currentCrmId); else localStorage.removeItem('currentCrmId');
+}
 async function loadData() {
-  if (!supabase || !session) { data = emptyData(); normalizeData(); return; }
+  if (!supabase || !session || !currentCrmId) { data = emptyData(); normalizeData(); return; }
   const entries = await Promise.all(Object.entries(crmTables).map(async ([collection, table]) => {
-    const { data: rows, error } = await supabase.from(table).select('*').eq('user_id', session.user.id);
+    const { data: rows, error } = await supabase.from(table).select('*').eq('crm_id', currentCrmId);
     if (error) throw error;
-    return [collection, (rows || []).map(({ user_id, ...row }) => row)];
+    return [collection, (rows || []).map(({ user_id, crm_id, ...row }) => row)];
   }));
   data = Object.fromEntries(entries);
   normalizeData();
 }
 async function persistData() {
   if (!supabase || !session) throw new Error('Keine aktive Supabase-Session.');
+  if (!currentCrmId) throw new Error('Bitte zuerst ein CRM auswählen oder erstellen.');
   normalizeData();
   const entries = Object.entries(crmTables);
   for (const [, table] of [...entries].reverse()) {
-    const { error } = await supabase.from(table).delete().eq('user_id', session.user.id);
+    const { error } = await supabase.from(table).delete().eq('crm_id', currentCrmId);
     if (error) throw error;
   }
   for (const [collection, table] of entries) {
-    const rows = data[collection].map(item => ({ ...item, user_id: session.user.id }));
+    const rows = data[collection].map(item => ({ ...item, user_id: session.user.id, crm_id: currentCrmId }));
     if (!rows.length) continue;
     const { error } = await supabase.from(table).insert(rows);
     if (error) throw error;
@@ -89,8 +103,9 @@ function nextFollowUpByCompany(id) { return companyFollowUps(id).filter(f => f.s
 function nextFollowUpByContact(id) { return contactFollowUps(id).filter(f => f.status === 'Offen').sort(byField('dueDate','asc'))[0]; }
 function priorityRank(p) { return { Hoch: 3, Mittel: 2, Niedrig: 1 }[p] || 0; }
 function byField(field, dir='asc') { return (a,b) => { const mult = dir === 'desc' ? -1 : 1; let av = field === 'priority' ? priorityRank(a.priority) : (a[field] || ''); let bv = field === 'priority' ? priorityRank(b.priority) : (b[field] || ''); return String(av).localeCompare(String(bv), 'de', { numeric: true }) * mult; }; }
-function render(options = {}) { if (isLoading) { app.innerHTML = '<div class="auth-shell"><div class="card auth-card"><h1>CRM wird geladen ...</h1></div></div>'; return; } if (!session) { renderAuth(); return; } app.innerHTML = `<div class="app-shell"><aside class="sidebar">${brand()}${nav()}${userBox()}</aside><main class="main"><div class="content">${authMessage ? `<div class="notice">${escapeHtml(authMessage)}</div>` : ''}${route()}</div></main></div>`; document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => { view = b.dataset.view; selectedCompanyId = null; selectedContactId = null; render(); })); bindActions(); restoreSearchFocus(options.focusSearch); }
+function render(options = {}) { if (isLoading) { app.innerHTML = '<div class="auth-shell"><div class="card auth-card"><h1>CRM wird geladen ...</h1></div></div>'; return; } if (!session) { renderAuth(); return; } if (!currentCrmId) { renderCrmOverview(); return; } app.innerHTML = `<div class="app-shell"><aside class="sidebar">${brand()}${crmSwitcher()}${nav()}${userBox()}</aside><main class="main"><div class="content">${authMessage ? `<div class="notice">${escapeHtml(authMessage)}</div>` : ''}${route()}</div></main></div>`; document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => { view = b.dataset.view; selectedCompanyId = null; selectedContactId = null; render(); })); bindActions(); restoreSearchFocus(options.focusSearch); }
 function brand() { return `<div class="brand"><span class="brand-mark">${icon('dashboard')}</span><span>Einfaches CRM</span></div>`; }
+function crmSwitcher() { return `<div class="crm-switcher"><span>Aktuelles CRM</span><strong>${escapeHtml(currentCrm?.name || 'CRM')}</strong><button class="btn" data-crm-overview>CRM wechseln</button><button class="btn" data-open-settings>Einstellungen</button></div>`; }
 function userBox() { const meta = session?.user?.user_metadata || {}; const name = [meta.first_name, meta.last_name].filter(Boolean).join(' ') || session?.user?.email || 'Angemeldet'; return `<div class="user-box"><strong>${escapeHtml(name)}</strong><span>${escapeHtml(session?.user?.email || '')}</span><button class="btn" data-logout>Logout</button></div>`; }
 function nav() { return `<nav class="nav">${[['dashboard','Übersicht','dashboard'],['companies','Firmen','companies'],['contacts','Kontakte','contacts'],['followups','Follow-ups','followups'],['sales','Sales','sales'],['products','Produkte','products']].map(([k,l,i]) => `<button class="${view===k?'active':''}" data-view="${k}">${icon(i)}<span>${l}</span></button>`).join('')}</nav>`; }
 function route() { if (view === 'companies') return companiesPage(); if (view === 'contacts') return contactsPage(); if (view === 'followups') return followUpsPage(); if (view === 'sales') return salesPage(); if (view === 'products') return productsPage(); if (view === 'companyDetail') return companyDetailPage(); if (view === 'contactDetail') return contactDetailPage(); return dashboardPage(); }
@@ -98,7 +113,10 @@ function header(title, text, action = '') { return `<div class="page-header"><di
 function empty(text) { return `<div class="empty">${icon('empty')}<strong>${escapeHtml(text)}</strong><span>Erstelle neue Einträge oder passe deine Filter an.</span></div>`; }
 function statusBadge(status='—') { const cls = ['Erledigt','Gewonnen','Bezahlt','Angenommen'].includes(status) ? 'done' : ['Offen','Angeboten'].includes(status) ? 'open' : status === 'Kunde' ? 'customer' : ['Passiv','Verloren'].includes(status) ? 'inactive' : ''; return `<span class="badge ${cls}">${escapeHtml(status)}</span>`; }
 function priorityBadge(p='—') { return `<span class="badge ${p === 'Hoch' ? 'high' : p === 'Mittel' ? 'medium' : ''}">${escapeHtml(p)}</span>`; }
-function dashboardPage() { const open = data.followUps.filter(f => f.status === 'Offen').sort(byField('dueDate')); const overdue = open.filter(isOverdue).length; return `${header('Übersicht','Fokus auf aktuelle Firmen, Kontakte und nächste Schritte.', `<button class="btn primary" data-open-follow>${icon('plus')}Follow-up hinzufügen</button>`)}<section class="grid four">${[['Firmen',data.companies.length,'companies'],['Kontakte',data.contacts.length,'contacts'],['Sales',data.sales.length,'sales'],['Produkte',data.products.length,'products']].map(s=>`<button class="card stat" data-view="${s[2]}">${icon(s[2])}<span class="kv">${s[0]}</span><strong>${s[1]}</strong></button>`).join('')}</section><section class="card" style="margin-top:18px"><h2>Nächste Follow-ups</h2>${open.length ? followUpsTable(open.slice(0,8), false) : empty('Keine offenen Follow-ups')}</section>`; }
+function currentCrmName() { return currentCrm?.name || 'CRM'; }
+function crmOverviewPage() { return `${header('CRM-Übersicht','Wähle ein CRM aus, erstelle ein neues CRM oder lade Menschen per Einstellungen ein.', `<button class="btn primary" data-open-crm>${icon('plus')}Neues CRM</button>`)}<section class="crm-grid">${crms.map(c=>`<button class="card crm-card" data-select-crm="${c.id}">${icon('dashboard')}<span class="kv">${escapeHtml(c.role === 'owner' ? 'Besitzer' : 'Mitglied')}</span><strong>${escapeHtml(c.name)}</strong><span>${escapeHtml(c.description || 'Gemeinsamer CRM-Arbeitsbereich')}</span></button>`).join('') || empty('Noch kein CRM vorhanden')}</section>`; }
+function renderCrmOverview() { app.innerHTML = `<div class="app-shell overview-shell"><aside class="sidebar">${brand()}${userBox()}</aside><main class="main"><div class="content">${authMessage ? `<div class="notice">${escapeHtml(authMessage)}</div>` : ''}${crmOverviewPage()}</div></main></div>`; bindActions(); }
+function dashboardPage() { const open = data.followUps.filter(f => f.status === 'Offen').sort(byField('dueDate')); const overdue = open.filter(isOverdue).length; return `${header(`Übersicht · ${currentCrmName()}`,'Fokus auf aktuelle Firmen, Kontakte und nächste Schritte.', `<button class="btn primary" data-open-follow>${icon('plus')}Follow-up hinzufügen</button>`)}<section class="grid four">${[['Firmen',data.companies.length,'companies'],['Kontakte',data.contacts.length,'contacts'],['Sales',data.sales.length,'sales'],['Produkte',data.products.length,'products']].map(s=>`<button class="card stat" data-view="${s[2]}">${icon(s[2])}<span class="kv">${s[0]}</span><strong>${s[1]}</strong></button>`).join('')}</section><section class="card" style="margin-top:18px"><h2>Nächste Follow-ups</h2>${open.length ? followUpsTable(open.slice(0,8), false) : empty('Keine offenen Follow-ups')}</section>`; }
 function toolbar(kind, placeholder, extra='') { const s=tableState[kind]; return `<div class="filters"><label class="search-field">${icon('search')}<input data-table-search="${kind}" placeholder="${placeholder}" value="${escapeHtml(s.q)}"></label>${extra}</div>`; }
 function sortHead(kind, field, label) { const s=tableState[kind]; return `<button class="sort-head ${s.sort===field?'active':''}" data-sort-kind="${kind}" data-sort-field="${field}">${label}${s.sort===field ? (s.dir==='asc'?' ↑':' ↓') : ''}</button>`; }
 function companiesPage() { const s=tableState.companies; const q=s.q.toLowerCase(); const items=data.companies.filter(c=>[c.name,c.status,c.industry,c.website].join(' ').toLowerCase().includes(q)).sort((a,b)=>{ const row = c => ({...c, contacts:data.contacts.filter(x=>x.companyId===c.id).length, nextDue:nextFollowUpByCompany(c.id)?.dueDate || '9999-99-99', last:lastActivity(c.id)?.updatedAt || c.updatedAt}); return byField(s.sort,s.dir)(row(a),row(b)); }); return `${header('Firmen','Alle Organisationen als klare Tabelle.', `<button class="btn primary" data-open-company>${icon('plus')}Firma hinzufügen</button>`)}${toolbar('companies','Firmen suchen ...')}<div class="table-card">${items.length ? companyTable(items) : empty('Keine Firmen gefunden')}</div>`; }
@@ -135,6 +153,10 @@ function restoreSearchFocus(focusSearch) {
 }
 function bindActions() {
   document.querySelector('[data-logout]')?.addEventListener('click', async () => { await supabase.auth.signOut(); });
+  document.querySelectorAll('[data-crm-overview]').forEach(b=>b.onclick=()=>{ currentCrmId=''; currentCrm=null; data=emptyData(); localStorage.removeItem('currentCrmId'); render(); });
+  document.querySelectorAll('[data-select-crm]').forEach(b=>b.onclick=async()=>{ currentCrmId=b.dataset.selectCrm; currentCrm=crms.find(c=>c.id===currentCrmId)||null; localStorage.setItem('currentCrmId', currentCrmId); view='dashboard'; authMessage=''; try { await loadData(); } catch (error) { authMessage = `Daten konnten nicht geladen werden: ${error.message}`; data = emptyData(); } render(); });
+  document.querySelectorAll('[data-open-crm]').forEach(b=>b.onclick=()=>openCrmForm());
+  document.querySelectorAll('[data-open-settings]').forEach(b=>b.onclick=()=>openCrmSettings());
   document.querySelectorAll('[data-open-company]').forEach(b=>b.onclick=()=>openCompanyForm());
   document.querySelectorAll('[data-edit-company]').forEach(b=>b.onclick=e=>{e.stopPropagation();openCompanyForm(data.companies.find(c=>c.id===b.dataset.editCompany));});
   document.querySelectorAll('[data-delete-company]').forEach(b=>b.onclick=e=>{e.stopPropagation();confirmDelete('Firma löschen?',async()=>{data.companies=data.companies.filter(c=>c.id!==b.dataset.deleteCompany);data.contacts=data.contacts.filter(c=>c.companyId!==b.dataset.deleteCompany);data.followUps=data.followUps.filter(f=>f.companyId!==b.dataset.deleteCompany);data.sales=data.sales.filter(x=>saleCompanyId(x)!==b.dataset.deleteCompany);await saveData();});});
@@ -153,6 +175,36 @@ function bindActions() {
   document.querySelectorAll('[data-sale-filter]').forEach(s=>s.onchange=e=>{tableState.sales[e.target.dataset.saleFilter]=e.target.value; render();});
   document.querySelectorAll('[data-timeline-filter]').forEach(s=>s.onchange=e=>{tableState.timeline[e.target.dataset.timelineFilter]=e.target.value; render();});
 }
+
+async function openCrmForm() {
+  modal('Neues CRM eröffnen', `<form id="form"><div class="form-grid"><label class="field full">CRM-Name*<input name="name" required placeholder="z. B. Vertrieb Schweiz"></label><label class="field full">Beschreibung<textarea name="description" placeholder="Optional: Wofür wird dieses CRM genutzt?"></textarea></label></div><div class="actions" style="margin-top:16px"><button class="btn primary">CRM erstellen</button></div></form>`);
+  $('#form').onsubmit = async e => {
+    e.preventDefault();
+    const fd = Object.fromEntries(new FormData(e.target));
+    const now = isoNow();
+    const crm = { id: uid(), name: fd.name, description: fd.description || '', owner_id: session.user.id, createdAt: now, updatedAt: now };
+    const email = session.user.email?.toLowerCase() || '';
+    const { error: crmError } = await supabase.from('crms').insert(crm);
+    if (crmError) { authMessage = `CRM konnte nicht erstellt werden: ${crmError.message}`; $('.modal-backdrop').remove(); render(); return; }
+    const { error: memberError } = await supabase.from('crm_members').insert({ id: uid(), crm_id: crm.id, user_id: session.user.id, invited_email: email, role: 'owner', createdAt: now });
+    if (memberError) { authMessage = `Mitgliedschaft konnte nicht erstellt werden: ${memberError.message}`; $('.modal-backdrop').remove(); render(); return; }
+    $('.modal-backdrop').remove();
+    await loadCrms(); currentCrmId = crm.id; currentCrm = crms.find(c=>c.id===crm.id) || crm; localStorage.setItem('currentCrmId', currentCrmId); data = emptyData(); view = 'dashboard'; authMessage = ''; render();
+  };
+}
+function openCrmSettings() {
+  modal(`Einstellungen: ${escapeHtml(currentCrmName())}`, `<form id="invite-form"><p class="kv">Lade Menschen per E-Mail ein. Sobald sie sich mit dieser E-Mail anmelden, sehen sie dieses CRM und dürfen Daten anschauen sowie bearbeiten.</p><div class="form-grid"><label class="field full">E-Mail-Adresse*<input name="email" type="email" required placeholder="person@example.com"></label></div><div class="actions" style="margin-top:16px"><button class="btn primary">Einladen</button></div></form>`);
+  $('#invite-form').onsubmit = async e => {
+    e.preventDefault();
+    const fd = Object.fromEntries(new FormData(e.target));
+    const email = fd.email.toLowerCase().trim();
+    const { error } = await supabase.from('crm_members').insert({ id: uid(), crm_id: currentCrmId, invited_email: email, role: 'editor', createdAt: isoNow() });
+    authMessage = error ? `Einladung fehlgeschlagen: ${error.message}` : `${email} wurde zu ${currentCrmName()} eingeladen.`;
+    $('.modal-backdrop').remove();
+    await loadCrms(); render();
+  };
+}
+
 function modal(title, body) { document.body.insertAdjacentHTML('beforeend', `<div class="modal-backdrop"><div class="modal"><div class="modal-head"><h2>${title}</h2><button class="btn" data-close>Schließen</button></div>${body}</div></div>`); $('[data-close]').onclick=()=>$('.modal-backdrop').remove(); }
 function fields(obj, type) {
   if(type==='company') return `<div class="form-grid"><label class="field">Name*<input name="name" required value="${escapeHtml(obj?.name||'')}"></label><label class="field">Status<select name="status">${['Lead','Kunde','Passiv'].map(s=>`<option ${obj?.status===s?'selected':''}>${s}</option>`)}</select></label><label class="field">Website<input name="website" value="${escapeHtml(obj?.website||'')}"></label><label class="field">Branche<input name="industry" value="${escapeHtml(obj?.industry||'')}"></label><label class="field full">Notizen<textarea name="notes">${escapeHtml(obj?.notes||'')}</textarea></label></div>`;
@@ -203,5 +255,5 @@ async function handleAuthSubmit(event) {
     render();
   }
 }
-async function init() { try { await loadSupabaseConfig(); } catch (error) { authMessage = error.message; } if (!supabase) { isLoading = false; render(); return; } const { data: authData } = await supabase.auth.getSession(); session = authData.session; if (session) { try { await loadData(); } catch (error) { authMessage = `Daten konnten nicht geladen werden: ${error.message}`; data = emptyData(); } } isLoading = false; render(); supabase.auth.onAuthStateChange(async (_event, newSession) => { session = newSession; if (session) { try { await loadData(); } catch (error) { authMessage = `Daten konnten nicht geladen werden: ${error.message}`; data = emptyData(); } } else data = emptyData(); isLoading = false; render(); }); }
+async function init() { try { await loadSupabaseConfig(); } catch (error) { authMessage = error.message; } if (!supabase) { isLoading = false; render(); return; } const { data: authData } = await supabase.auth.getSession(); session = authData.session; if (session) { try { await loadCrms(); await loadData(); } catch (error) { authMessage = `Daten konnten nicht geladen werden: ${error.message}`; data = emptyData(); } } isLoading = false; render(); supabase.auth.onAuthStateChange(async (_event, newSession) => { session = newSession; if (session) { try { await loadCrms(); await loadData(); } catch (error) { authMessage = `Daten konnten nicht geladen werden: ${error.message}`; data = emptyData(); } } else { data = emptyData(); crms = []; currentCrmId = ''; currentCrm = null; localStorage.removeItem('currentCrmId'); } isLoading = false; render(); }); }
 init();
